@@ -1,5 +1,6 @@
 #include "FileBrowserActivity.h"
 
+#include <ArduinoJson.h>
 #include <Epub.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
@@ -9,6 +10,7 @@
 #include <algorithm>
 
 #include "../util/ConfirmationActivity.h"
+#include "ArticlesPaths.h"
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
@@ -103,6 +105,22 @@ void FileBrowserActivity::loadFiles() {
   }
   root.close();
   sortFileList(files);
+  loadArticleTitles();
+}
+
+void FileBrowserActivity::loadArticleTitles() {
+  articleTitles.clear();
+  if (basepath != "/articles") return;
+
+  String json = Storage.readFile("/articles/.metadata.json");
+  if (json.isEmpty()) return;
+
+  JsonDocument doc;
+  if (deserializeJson(doc, json)) return;
+
+  for (JsonPair kv : doc.as<JsonObject>()) {
+    articleTitles[kv.key().c_str()] = kv.value().as<const char*>();
+  }
 }
 
 void FileBrowserActivity::onEnter() {
@@ -266,8 +284,15 @@ void FileBrowserActivity::render(RenderLock&&) {
   } else {
     GUI.drawList(
         renderer, Rect{0, contentTop, pageWidth, contentHeight}, files.size(), selectorIndex,
-        [this](int index) { return getFileName(files[index]); }, nullptr,
-        [this](int index) { return UITheme::getFileIcon(files[index]); });
+        [this](int index) {
+          const auto& name = files[index];
+          if (!articleTitles.empty()) {
+            auto it = articleTitles.find(name);
+            if (it != articleTitles.end()) return it->second;
+          }
+          return getFileName(name);
+        },
+        nullptr, [this](int index) { return UITheme::getFileIcon(files[index]); });
   }
 
   // Help text

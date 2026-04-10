@@ -259,8 +259,23 @@ void ArticleSyncActivity::render(RenderLock&&) {
     renderer.drawCenteredText(UI_10_FONT_ID, startY, progressStr, true, EpdFontFamily::BOLD);
 
     if (downloadIndex < static_cast<int>(toDownload.size())) {
-      renderer.drawCenteredText(UI_10_FONT_ID, startY + lineHeight + metrics.verticalSpacing,
-                                toDownload[downloadIndex].title.c_str());
+      const char* title = toDownload[downloadIndex].title.c_str();
+      const int maxWidth = pageWidth - 2 * metrics.contentSidePadding;
+      const int titleY = startY + lineHeight + metrics.verticalSpacing;
+
+      if (renderer.getTextWidth(UI_10_FONT_ID, title) <= maxWidth) {
+        renderer.drawCenteredText(UI_10_FONT_ID, titleY, title);
+      } else {
+        // Truncate with ellipsis to fit available width
+        char truncated[128];
+        int len = strlen(title);
+        while (len > 0) {
+          snprintf(truncated, sizeof(truncated), "%.*s...", len, title);
+          if (renderer.getTextWidth(UI_10_FONT_ID, truncated) <= maxWidth) break;
+          len--;
+        }
+        renderer.drawCenteredText(UI_10_FONT_ID, titleY, truncated);
+      }
     }
 
     if (downloadTotal > 0) {
