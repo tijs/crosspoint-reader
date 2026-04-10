@@ -12,7 +12,6 @@
 #include <cstring>
 #include <vector>
 
-#include "ArticlesPaths.h"
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
@@ -25,26 +24,21 @@ int HomeActivity::getMenuItemCount() const {
   if (!recentBooks.empty()) {
     count += recentBooks.size();
   }
-  if (!recentArticles.empty()) {
-    count += recentArticles.size();
-  }
   if (hasOpdsUrl) {
     count++;
   }
   return count;
 }
 
-void HomeActivity::loadRecents(std::vector<RecentBook>& out, int maxCount, bool articles) {
-  out.clear();
+void HomeActivity::loadRecentBooks(int maxCount) {
+  recentBooks.clear();
   const auto& books = RECENT_BOOKS.getBooks();
-  out.reserve(std::min(static_cast<int>(books.size()), maxCount));
+  recentBooks.reserve(std::min(static_cast<int>(books.size()), maxCount));
 
   for (const RecentBook& book : books) {
-    if (static_cast<int>(out.size()) >= maxCount) break;
-    const bool isArticle = book.path.compare(0, ARTICLES_PATH_LEN, ARTICLES_PATH) == 0;
-    if (isArticle != articles) continue;
+    if (static_cast<int>(recentBooks.size()) >= maxCount) break;
     if (!Storage.exists(book.path.c_str())) continue;
-    out.push_back(book);
+    recentBooks.push_back(book);
   }
 }
 
@@ -114,8 +108,7 @@ void HomeActivity::onEnter() {
   selectorIndex = 0;
 
   const auto& metrics = UITheme::getInstance().getMetrics();
-  loadRecents(recentBooks, metrics.homeRecentBooksCount, false);
-  loadRecents(recentArticles, metrics.homeRecentArticlesCount, true);
+  loadRecentBooks(metrics.homeRecentBooksCount);
 
   // Trigger first update
   requestUpdate();
@@ -190,15 +183,8 @@ void HomeActivity::loop() {
       return;
     }
 
-    // Then recent articles
-    int idx = selectorIndex - static_cast<int>(recentBooks.size());
-    if (idx < static_cast<int>(recentArticles.size())) {
-      onSelectBook(recentArticles[idx].path);
-      return;
-    }
-
     // Then menu items
-    int menuIdx = idx - static_cast<int>(recentArticles.size());
+    int menuIdx = selectorIndex - static_cast<int>(recentBooks.size());
     int m = 0;
     const int fileBrowserIdx = m++;
     const int recentsIdx = m++;
@@ -241,23 +227,12 @@ void HomeActivity::render(RenderLock&&) {
                           selectorIndex, coverRendered, coverBufferStored, bufferRestored,
                           std::bind(&HomeActivity::storeCoverBuffer, this));
 
-  // Build combined menu: recent articles + static menu items
-  // Max: 8 articles + 5 menu items (browse, recents, opds, transfer, settings) = 13
-  static constexpr int MAX_MENU_ITEMS = 16;
+  // Build menu items
+  static constexpr int MAX_MENU_ITEMS = 8;
   const char* allItems[MAX_MENU_ITEMS];
   UIIcon allIcons[MAX_MENU_ITEMS];
   int allCount = 0;
 
-  for (const auto& article : recentArticles) {
-    if (allCount >= MAX_MENU_ITEMS) break;
-    allItems[allCount] = article.title.empty() ? article.path.c_str() : article.title.c_str();
-    allIcons[allCount] = Book;
-    allCount++;
-  }
-
-  const int articleMenuCount = allCount;
-
-  // Static menu items
   auto addMenuItem = [&](const char* label, UIIcon icon) {
     if (allCount < MAX_MENU_ITEMS) {
       allItems[allCount] = label;
