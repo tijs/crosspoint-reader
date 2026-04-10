@@ -48,6 +48,7 @@ struct ThemeMetrics {
   int homeCoverHeight;
   int homeCoverTileHeight;
   int homeRecentBooksCount;
+  int homeRecentArticlesCount;
 
   int buttonHintsHeight;
   int sideButtonHintsWidth;
@@ -89,6 +90,7 @@ constexpr ThemeMetrics values = {.batteryWidth = 15,
                                  .homeCoverHeight = 400,
                                  .homeCoverTileHeight = 400,
                                  .homeRecentBooksCount = 1,
+                                 .homeRecentArticlesCount = 3,
                                  .buttonHintsHeight = 40,
                                  .sideButtonHintsWidth = 30,
                                  .progressBarHeight = 16,

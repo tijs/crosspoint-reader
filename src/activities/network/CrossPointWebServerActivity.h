@@ -46,6 +46,7 @@ class CrossPointWebServerActivity final : public Activity {
 
   void renderServerRunning() const;
 
+  void returnToModeSelection();
   void onNetworkModeSelected(NetworkMode mode);
   void onWifiSelectionComplete(bool connected);
   void startAccessPoint();

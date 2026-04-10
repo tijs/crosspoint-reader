@@ -12,6 +12,7 @@
 #include <cstring>
 #include <vector>
 
+#include "ArticlesPaths.h"
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
@@ -24,29 +25,26 @@ int HomeActivity::getMenuItemCount() const {
   if (!recentBooks.empty()) {
     count += recentBooks.size();
   }
+  if (!recentArticles.empty()) {
+    count += recentArticles.size();
+  }
   if (hasOpdsUrl) {
     count++;
   }
   return count;
 }
 
-void HomeActivity::loadRecentBooks(int maxBooks) {
-  recentBooks.clear();
+void HomeActivity::loadRecents(std::vector<RecentBook>& out, int maxCount, bool articles) {
+  out.clear();
   const auto& books = RECENT_BOOKS.getBooks();
-  recentBooks.reserve(std::min(static_cast<int>(books.size()), maxBooks));
+  out.reserve(std::min(static_cast<int>(books.size()), maxCount));
 
   for (const RecentBook& book : books) {
-    // Limit to maximum number of recent books
-    if (recentBooks.size() >= maxBooks) {
-      break;
-    }
-
-    // Skip if file no longer exists
-    if (!Storage.exists(book.path.c_str())) {
-      continue;
-    }
-
-    recentBooks.push_back(book);
+    if (static_cast<int>(out.size()) >= maxCount) break;
+    const bool isArticle = book.path.compare(0, ARTICLES_PATH_LEN, ARTICLES_PATH) == 0;
+    if (isArticle != articles) continue;
+    if (!Storage.exists(book.path.c_str())) continue;
+    out.push_back(book);
   }
 }
 
@@ -116,7 +114,8 @@ void HomeActivity::onEnter() {
   selectorIndex = 0;
 
   const auto& metrics = UITheme::getInstance().getMetrics();
-  loadRecentBooks(metrics.homeRecentBooksCount);
+  loadRecents(recentBooks, metrics.homeRecentBooksCount, false);
+  loadRecents(recentArticles, metrics.homeRecentArticlesCount, true);
 
   // Trigger first update
   requestUpdate();
@@ -185,26 +184,37 @@ void HomeActivity::loop() {
   });
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-    // Calculate dynamic indices based on which options are available
-    int idx = 0;
-    int menuSelectedIndex = selectorIndex - static_cast<int>(recentBooks.size());
-    const int fileBrowserIdx = idx++;
-    const int recentsIdx = idx++;
-    const int opdsLibraryIdx = hasOpdsUrl ? idx++ : -1;
-    const int fileTransferIdx = idx++;
-    const int settingsIdx = idx;
-
-    if (selectorIndex < recentBooks.size()) {
+    // Recent books come first
+    if (selectorIndex < static_cast<int>(recentBooks.size())) {
       onSelectBook(recentBooks[selectorIndex].path);
-    } else if (menuSelectedIndex == fileBrowserIdx) {
+      return;
+    }
+
+    // Then recent articles
+    int idx = selectorIndex - static_cast<int>(recentBooks.size());
+    if (idx < static_cast<int>(recentArticles.size())) {
+      onSelectBook(recentArticles[idx].path);
+      return;
+    }
+
+    // Then menu items
+    int menuIdx = idx - static_cast<int>(recentArticles.size());
+    int m = 0;
+    const int fileBrowserIdx = m++;
+    const int recentsIdx = m++;
+    const int opdsLibraryIdx = hasOpdsUrl ? m++ : -1;
+    const int fileTransferIdx = m++;
+    const int settingsIdx = m;
+
+    if (menuIdx == fileBrowserIdx) {
       onFileBrowserOpen();
-    } else if (menuSelectedIndex == recentsIdx) {
+    } else if (menuIdx == recentsIdx) {
       onRecentsOpen();
-    } else if (menuSelectedIndex == opdsLibraryIdx) {
+    } else if (menuIdx == opdsLibraryIdx) {
       onOpdsBrowserOpen();
-    } else if (menuSelectedIndex == fileTransferIdx) {
+    } else if (menuIdx == fileTransferIdx) {
       onFileTransferOpen();
-    } else if (menuSelectedIndex == settingsIdx) {
+    } else if (menuIdx == settingsIdx) {
       onSettingsOpen();
     }
   }
@@ -216,34 +226,60 @@ void HomeActivity::render(RenderLock&&) {
   const auto pageHeight = renderer.getScreenHeight();
 
   renderer.clearScreen();
+
+  // Draw header
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, nullptr);
+
+  // Content area below header
+  const int contentY = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
+  const int contentHeight = pageHeight - (contentY + metrics.buttonHintsHeight + metrics.verticalSpacing);
+
   bool bufferRestored = coverBufferStored && restoreCoverBuffer();
 
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding}, nullptr);
-
-  GUI.drawRecentBookCover(renderer, Rect{0, metrics.homeTopPadding, pageWidth, metrics.homeCoverTileHeight},
-                          recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
+  // Cover tile area for recent books
+  GUI.drawRecentBookCover(renderer, Rect{0, contentY, pageWidth, metrics.homeCoverTileHeight}, recentBooks,
+                          selectorIndex, coverRendered, coverBufferStored, bufferRestored,
                           std::bind(&HomeActivity::storeCoverBuffer, this));
 
-  // Build menu items dynamically
-  std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_FILE_TRANSFER),
-                                        tr(STR_SETTINGS_TITLE)};
-  std::vector<UIIcon> menuIcons = {Folder, Recent, Transfer, Settings};
+  // Build combined menu: recent articles + static menu items
+  // Max: 8 articles + 5 menu items (browse, recents, opds, transfer, settings) = 13
+  static constexpr int MAX_MENU_ITEMS = 16;
+  const char* allItems[MAX_MENU_ITEMS];
+  UIIcon allIcons[MAX_MENU_ITEMS];
+  int allCount = 0;
 
-  if (hasOpdsUrl) {
-    // Insert OPDS Browser after File Browser
-    menuItems.insert(menuItems.begin() + 2, tr(STR_OPDS_BROWSER));
-    menuIcons.insert(menuIcons.begin() + 2, Library);
+  for (const auto& article : recentArticles) {
+    if (allCount >= MAX_MENU_ITEMS) break;
+    allItems[allCount] = article.title.empty() ? article.path.c_str() : article.title.c_str();
+    allIcons[allCount] = Book;
+    allCount++;
   }
 
-  GUI.drawButtonMenu(
-      renderer,
-      Rect{0, metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.verticalSpacing, pageWidth,
-           pageHeight - (metrics.headerHeight + metrics.homeTopPadding + metrics.verticalSpacing * 2 +
-                         metrics.buttonHintsHeight)},
-      static_cast<int>(menuItems.size()), selectorIndex - recentBooks.size(),
-      [&menuItems](int index) { return std::string(menuItems[index]); },
-      [&menuIcons](int index) { return menuIcons[index]; });
+  const int articleMenuCount = allCount;
 
+  // Static menu items
+  auto addMenuItem = [&](const char* label, UIIcon icon) {
+    if (allCount < MAX_MENU_ITEMS) {
+      allItems[allCount] = label;
+      allIcons[allCount] = icon;
+      allCount++;
+    }
+  };
+  addMenuItem(tr(STR_BROWSE_FILES), Folder);
+  addMenuItem(tr(STR_MENU_RECENT_BOOKS), Recent);
+  if (hasOpdsUrl) addMenuItem(tr(STR_OPDS_BROWSER), Library);
+  addMenuItem(tr(STR_FILE_TRANSFER), Transfer);
+  addMenuItem(tr(STR_SETTINGS_TITLE), Settings);
+
+  const int menuY = contentY + metrics.homeCoverTileHeight + metrics.verticalSpacing;
+  const int menuHeight = contentY + contentHeight - menuY;
+
+  GUI.drawButtonMenu(
+      renderer, Rect{0, menuY, pageWidth, menuHeight}, allCount, selectorIndex - static_cast<int>(recentBooks.size()),
+      [&allItems](int index) { return std::string(allItems[index]); },
+      [&allIcons](int index) { return allIcons[index]; });
+
+  // Button hints
   const auto labels = mappedInput.mapLabels("", tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 

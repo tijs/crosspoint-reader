@@ -9,6 +9,7 @@
 
 #include <cstddef>
 
+#include "ArticleSyncActivity.h"
 #include "MappedInputManager.h"
 #include "NetworkModeSelectionActivity.h"
 #include "WifiSelectionActivity.h"
@@ -48,6 +49,11 @@ void CrossPointWebServerActivity::onEnter() {
 
   // Launch network mode selection subactivity
   LOG_DBG("WEBACT", "Launching NetworkModeSelectionActivity...");
+  returnToModeSelection();
+}
+
+void CrossPointWebServerActivity::returnToModeSelection() {
+  state = WebServerActivityState::MODE_SELECTION;
   startActivityForResult(std::make_unique<NetworkModeSelectionActivity>(renderer, mappedInput),
                          [this](const ActivityResult& result) {
                            if (result.isCancelled) {
@@ -62,6 +68,14 @@ void CrossPointWebServerActivity::onExit() {
   Activity::onExit();
 
   LOG_DBG("WEBACT", "Free heap at onExit start: %d bytes", ESP.getFreeHeap());
+
+  // Only tear down WiFi/server if we actually started them.
+  // SYNC_ARTICLES path never starts the web server, mDNS, or DNS —
+  // ArticleSyncActivity manages its own WiFi lifecycle.
+  if (state == WebServerActivityState::MODE_SELECTION) {
+    LOG_DBG("WEBACT", "No server/WiFi started, skipping teardown");
+    return;
+  }
 
   state = WebServerActivityState::SHUTTING_DOWN;
 
@@ -105,26 +119,24 @@ void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) 
     modeName = "Connect to Calibre";
   } else if (mode == NetworkMode::CREATE_HOTSPOT) {
     modeName = "Create Hotspot";
+  } else if (mode == NetworkMode::SYNC_ARTICLES) {
+    modeName = "Sync Articles";
   }
   LOG_DBG("WEBACT", "Network mode selected: %s", modeName);
 
   networkMode = mode;
   isApMode = (mode == NetworkMode::CREATE_HOTSPOT);
 
-  if (mode == NetworkMode::CONNECT_CALIBRE) {
-    startActivityForResult(
-        std::make_unique<CalibreConnectActivity>(renderer, mappedInput), [this](const ActivityResult& result) {
-          state = WebServerActivityState::MODE_SELECTION;
+  if (mode == NetworkMode::SYNC_ARTICLES) {
+    // Launch ArticleSyncActivity as a sub-activity, return to mode selection when done
+    startActivityForResult(std::make_unique<ArticleSyncActivity>(renderer, mappedInput),
+                           [this](const ActivityResult&) { returnToModeSelection(); });
+    return;
+  }
 
-          startActivityForResult(std::make_unique<NetworkModeSelectionActivity>(renderer, mappedInput),
-                                 [this](const ActivityResult& result) {
-                                   if (result.isCancelled) {
-                                     onGoHome();
-                                   } else {
-                                     onNetworkModeSelected(std::get<NetworkModeResult>(result.data).mode);
-                                   }
-                                 });
-        });
+  if (mode == NetworkMode::CONNECT_CALIBRE) {
+    startActivityForResult(std::make_unique<CalibreConnectActivity>(renderer, mappedInput),
+                           [this](const ActivityResult&) { returnToModeSelection(); });
     return;
   }
 
@@ -168,16 +180,7 @@ void CrossPointWebServerActivity::onWifiSelectionComplete(const bool connected) 
     startWebServer();
   } else {
     // User cancelled - go back to mode selection
-    state = WebServerActivityState::MODE_SELECTION;
-
-    startActivityForResult(std::make_unique<NetworkModeSelectionActivity>(renderer, mappedInput),
-                           [this](const ActivityResult& result) {
-                             if (result.isCancelled) {
-                               onGoHome();
-                             } else {
-                               onNetworkModeSelected(std::get<NetworkModeResult>(result.data).mode);
-                             }
-                           });
+    returnToModeSelection();
   }
 }
 

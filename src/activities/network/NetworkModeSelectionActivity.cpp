@@ -3,53 +3,52 @@
 #include <GfxRenderer.h>
 #include <I18n.h>
 
+#include <cstring>
+
+#include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
-namespace {
-constexpr int MENU_ITEM_COUNT = 3;
-}  // namespace
-
 void NetworkModeSelectionActivity::onEnter() {
   Activity::onEnter();
 
-  // Reset selection
   selectedIndex = 0;
+  hasArticlesUrl = strlen(SETTINGS.articlesBackendUrl) > 0;
 
-  // Trigger first update
   requestUpdate();
 }
 
 void NetworkModeSelectionActivity::onExit() { Activity::onExit(); }
 
 void NetworkModeSelectionActivity::loop() {
-  // Handle back button - cancel
   if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
     onCancel();
     return;
   }
 
-  // Handle confirm button - select current option
   if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+    // Map selectedIndex to NetworkMode based on dynamic menu
+    // 0: Join Network, 1: Calibre, 2: Create Hotspot, 3: Sync Articles (if present)
     NetworkMode mode = NetworkMode::JOIN_NETWORK;
     if (selectedIndex == 1) {
       mode = NetworkMode::CONNECT_CALIBRE;
     } else if (selectedIndex == 2) {
       mode = NetworkMode::CREATE_HOTSPOT;
+    } else if (selectedIndex == 3 && hasArticlesUrl) {
+      mode = NetworkMode::SYNC_ARTICLES;
     }
     onModeSelected(mode);
     return;
   }
 
-  // Handle navigation
   buttonNavigator.onNext([this] {
-    selectedIndex = ButtonNavigator::nextIndex(selectedIndex, MENU_ITEM_COUNT);
+    selectedIndex = ButtonNavigator::nextIndex(selectedIndex, (hasArticlesUrl ? 4 : 3));
     requestUpdate();
   });
 
   buttonNavigator.onPrevious([this] {
-    selectedIndex = ButtonNavigator::previousIndex(selectedIndex, MENU_ITEM_COUNT);
+    selectedIndex = ButtonNavigator::previousIndex(selectedIndex, (hasArticlesUrl ? 4 : 3));
     requestUpdate();
   });
 }
@@ -65,19 +64,25 @@ void NetworkModeSelectionActivity::render(RenderLock&&) {
 
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
-  // Menu items and descriptions
-  static constexpr StrId menuItems[MENU_ITEM_COUNT] = {StrId::STR_JOIN_NETWORK, StrId::STR_CALIBRE_WIRELESS,
-                                                       StrId::STR_CREATE_HOTSPOT};
-  static constexpr StrId menuDescs[MENU_ITEM_COUNT] = {StrId::STR_JOIN_DESC, StrId::STR_CALIBRE_DESC,
-                                                       StrId::STR_HOTSPOT_DESC};
-  static constexpr UIIcon menuIcons[MENU_ITEM_COUNT] = {UIIcon::Wifi, UIIcon::Library, UIIcon::Hotspot};
 
+  // Build menu dynamically based on whether articles backend is configured
+  StrId menuItems[4] = {StrId::STR_JOIN_NETWORK, StrId::STR_CALIBRE_WIRELESS, StrId::STR_CREATE_HOTSPOT};
+  StrId menuDescs[4] = {StrId::STR_JOIN_DESC, StrId::STR_CALIBRE_DESC, StrId::STR_HOTSPOT_DESC};
+  UIIcon menuIcons[4] = {UIIcon::Wifi, UIIcon::Library, UIIcon::Hotspot};
+
+  if (hasArticlesUrl) {
+    menuItems[3] = StrId::STR_SYNC_ARTICLES;
+    menuDescs[3] = StrId::STR_SYNC_ARTICLES_DESC;
+    menuIcons[3] = UIIcon::Wifi;
+  }
+
+  const int count = (hasArticlesUrl ? 4 : 3);
   GUI.drawList(
-      renderer, Rect{0, contentTop, pageWidth, contentHeight}, static_cast<int>(MENU_ITEM_COUNT), selectedIndex,
-      [](int index) { return std::string(I18N.get(menuItems[index])); },
-      [](int index) { return std::string(I18N.get(menuDescs[index])); }, [](int index) { return menuIcons[index]; });
+      renderer, Rect{0, contentTop, pageWidth, contentHeight}, count, selectedIndex,
+      [&menuItems](int index) { return std::string(I18N.get(menuItems[index])); },
+      [&menuDescs](int index) { return std::string(I18N.get(menuDescs[index])); },
+      [&menuIcons](int index) { return menuIcons[index]; });
 
-  // Draw help text at bottom
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 

@@ -1,5 +1,4 @@
 #pragma once
-#include <functional>
 #include <vector>
 
 #include "../Activity.h"
@@ -20,6 +19,8 @@ class HomeActivity final : public Activity {
   bool coverBufferStored = false;  // Track if cover buffer is stored
   uint8_t* coverBuffer = nullptr;  // HomeActivity's own buffer for cover image
   std::vector<RecentBook> recentBooks;
+  std::vector<RecentBook> recentArticles;
+
   void onSelectBook(const std::string& path);
   void onFileBrowserOpen();
   void onRecentsOpen();
@@ -31,7 +32,7 @@ class HomeActivity final : public Activity {
   bool storeCoverBuffer();    // Store frame buffer for cover image
   bool restoreCoverBuffer();  // Restore frame buffer from stored cover
   void freeCoverBuffer();     // Free the stored cover buffer
-  void loadRecentBooks(int maxBooks);
+  void loadRecents(std::vector<RecentBook>& out, int maxCount, bool articles);
   void loadRecentCovers(int coverHeight);
 
  public:

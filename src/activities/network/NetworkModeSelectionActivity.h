@@ -5,7 +5,7 @@
 #include "../Activity.h"
 #include "util/ButtonNavigator.h"
 
-enum class NetworkMode { JOIN_NETWORK, CONNECT_CALIBRE, CREATE_HOTSPOT };
+enum class NetworkMode { JOIN_NETWORK, CONNECT_CALIBRE, CREATE_HOTSPOT, SYNC_ARTICLES };
 
 /**
  * NetworkModeSelectionActivity presents the user with a choice:
@@ -20,6 +20,7 @@ class NetworkModeSelectionActivity final : public Activity {
   ButtonNavigator buttonNavigator;
 
   int selectedIndex = 0;
+  bool hasArticlesUrl = false;
 
  public:
   explicit NetworkModeSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
