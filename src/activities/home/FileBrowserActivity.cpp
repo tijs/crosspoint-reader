@@ -112,15 +112,21 @@ void FileBrowserActivity::loadArticleTitles() {
   articleTitles.clear();
   if (basepath != "/articles") return;
 
-  String json = Storage.readFile("/articles/.metadata.json");
-  if (json.isEmpty()) return;
+  {
+    String json = Storage.readFile("/articles/.metadata.json");
+    if (json.isEmpty()) return;
 
-  JsonDocument doc;
-  if (deserializeJson(doc, json)) return;
+    JsonDocument doc;
+    if (deserializeJson(doc, json)) return;
 
-  for (JsonPair kv : doc.as<JsonObject>()) {
-    articleTitles[kv.key().c_str()] = kv.value().as<const char*>();
-  }
+    JsonObject obj = doc.as<JsonObject>();
+    articleTitles.reserve(obj.size());
+    for (JsonPair kv : obj) {
+      articleTitles.emplace_back(kv.key().c_str(), kv.value().as<const char*>());
+    }
+  }  // json + doc freed here before sort
+
+  std::sort(articleTitles.begin(), articleTitles.end());
 }
 
 void FileBrowserActivity::onEnter() {
@@ -135,6 +141,7 @@ void FileBrowserActivity::onEnter() {
 void FileBrowserActivity::onExit() {
   Activity::onExit();
   files.clear();
+  articleTitles.clear();
 }
 
 void FileBrowserActivity::clearFileMetadata(const std::string& fullPath) {
@@ -287,8 +294,9 @@ void FileBrowserActivity::render(RenderLock&&) {
         [this](int index) {
           const auto& name = files[index];
           if (!articleTitles.empty()) {
-            auto it = articleTitles.find(name);
-            if (it != articleTitles.end()) return it->second;
+            auto it = std::lower_bound(articleTitles.begin(), articleTitles.end(), name,
+                                       [](const auto& pair, const std::string& key) { return pair.first < key; });
+            if (it != articleTitles.end() && it->first == name) return it->second;
           }
           return getFileName(name);
         },

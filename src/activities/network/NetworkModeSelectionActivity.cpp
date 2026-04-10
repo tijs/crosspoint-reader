@@ -28,17 +28,10 @@ void NetworkModeSelectionActivity::loop() {
   }
 
   if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
-    // Map selectedIndex to NetworkMode based on dynamic menu
-    // 0: Join Network, 1: Calibre, 2: Create Hotspot, 3: Sync Articles (if present)
-    NetworkMode mode = NetworkMode::JOIN_NETWORK;
-    if (selectedIndex == 1) {
-      mode = NetworkMode::CONNECT_CALIBRE;
-    } else if (selectedIndex == 2) {
-      mode = NetworkMode::CREATE_HOTSPOT;
-    } else if (selectedIndex == 3 && hasArticlesUrl) {
-      mode = NetworkMode::SYNC_ARTICLES;
-    }
-    onModeSelected(mode);
+    // Parallel array kept in sync with menu items built in render()
+    NetworkMode modes[] = {NetworkMode::JOIN_NETWORK, NetworkMode::CONNECT_CALIBRE, NetworkMode::CREATE_HOTSPOT,
+                           NetworkMode::SYNC_ARTICLES};
+    onModeSelected(modes[selectedIndex]);
     return;
   }
 

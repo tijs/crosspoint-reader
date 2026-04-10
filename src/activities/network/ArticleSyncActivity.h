@@ -38,6 +38,7 @@ class ArticleSyncActivity final : public Activity {
   struct ArticleInfo {
     std::string filename;
     std::string title;
+    std::string displayTitle;  // Pre-truncated title for rendering
   };
 
   State state = FETCHING_LIST;
@@ -54,6 +55,7 @@ class ArticleSyncActivity final : public Activity {
   void fetchArticleList();
   void downloadArticles();
   bool downloadSingleArticle(const ArticleInfo& article);
+  void precomputeDisplayTitles();
 
   static bool isValidArticleFilename(const char* name);
 };

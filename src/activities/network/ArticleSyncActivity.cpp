@@ -18,6 +18,10 @@
 #include "network/HttpDownloader.h"
 
 namespace {
+// WiFi lifecycle: ArticleSyncActivity owns WiFi for the SYNC_ARTICLES path.
+// It connects via WifiSelectionActivity and tears down here in onExit().
+// CrossPointWebServerActivity skips its own WiFi teardown when state == MODE_SELECTION
+// (i.e. the SYNC_ARTICLES path never started the web server or its WiFi).
 void wifiOff() {
   WiFi.disconnect(false);
   delay(100);
@@ -84,6 +88,26 @@ void ArticleSyncActivity::onWifiSelectionComplete(bool success) {
 }
 
 void ArticleSyncActivity::fetchArticleList() {
+  // Clean up stale temp files from interrupted downloads before starting new sync
+  {
+    auto dir = Storage.open(ARTICLES_PATH);
+    if (dir && dir.isDirectory()) {
+      dir.rewindDirectory();
+      char name[160];
+      for (auto f = dir.openNextFile(); f; f = dir.openNextFile()) {
+        f.getName(name, sizeof(name));
+        f.close();
+        if (strncmp(name, ".dl_", 4) == 0) {
+          char path[160];
+          snprintf(path, sizeof(path), "%s%s", ARTICLES_PATH, name);
+          Storage.remove(path);
+          LOG_DBG("ArtSync", "Removed stale temp file: %s", path);
+        }
+      }
+      dir.close();
+    }
+  }
+
   std::string url = std::string(SETTINGS.articlesBackendUrl) + "/sync";
 
   // Build metadata doc and download list from JSON response.
@@ -168,9 +192,39 @@ void ArticleSyncActivity::fetchArticleList() {
   downloadArticles();
 }
 
+void ArticleSyncActivity::precomputeDisplayTitles() {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int maxWidth = renderer.getScreenWidth() - 2 * metrics.contentSidePadding;
+
+  for (auto& article : toDownload) {
+    const char* title = article.title.c_str();
+    if (renderer.getTextWidth(UI_10_FONT_ID, title) <= maxWidth) {
+      article.displayTitle = article.title;
+    } else {
+      // Binary search for the longest prefix that fits with ellipsis
+      char truncated[128];
+      int lo = 0;
+      int hi = static_cast<int>(strlen(title));
+      while (lo < hi) {
+        int mid = (lo + hi + 1) / 2;
+        snprintf(truncated, sizeof(truncated), "%.*s...", mid, title);
+        if (renderer.getTextWidth(UI_10_FONT_ID, truncated) <= maxWidth) {
+          lo = mid;
+        } else {
+          hi = mid - 1;
+        }
+      }
+      snprintf(truncated, sizeof(truncated), "%.*s...", lo, title);
+      article.displayTitle = truncated;
+    }
+  }
+}
+
 void ArticleSyncActivity::downloadArticles() {
   downloadIndex = 0;
   downloadedCount = 0;
+
+  precomputeDisplayTitles();
 
   {
     RenderLock lock(*this);
@@ -259,23 +313,8 @@ void ArticleSyncActivity::render(RenderLock&&) {
     renderer.drawCenteredText(UI_10_FONT_ID, startY, progressStr, true, EpdFontFamily::BOLD);
 
     if (downloadIndex < static_cast<int>(toDownload.size())) {
-      const char* title = toDownload[downloadIndex].title.c_str();
-      const int maxWidth = pageWidth - 2 * metrics.contentSidePadding;
       const int titleY = startY + lineHeight + metrics.verticalSpacing;
-
-      if (renderer.getTextWidth(UI_10_FONT_ID, title) <= maxWidth) {
-        renderer.drawCenteredText(UI_10_FONT_ID, titleY, title);
-      } else {
-        // Truncate with ellipsis to fit available width
-        char truncated[128];
-        int len = strlen(title);
-        while (len > 0) {
-          snprintf(truncated, sizeof(truncated), "%.*s...", len, title);
-          if (renderer.getTextWidth(UI_10_FONT_ID, truncated) <= maxWidth) break;
-          len--;
-        }
-        renderer.drawCenteredText(UI_10_FONT_ID, titleY, truncated);
-      }
+      renderer.drawCenteredText(UI_10_FONT_ID, titleY, toDownload[downloadIndex].displayTitle.c_str());
     }
 
     if (downloadTotal > 0) {

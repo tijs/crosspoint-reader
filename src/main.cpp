@@ -255,19 +255,6 @@ void setup() {
   // Ensure articles directory exists for article sync feature
   Storage.ensureDirectoryExists("/articles/");
 
-  // Clean up any stale temp files from interrupted article downloads
-  {
-    auto files = Storage.listFiles("/articles/");
-    for (const auto& f : files) {
-      if (strncmp(f.c_str(), ".dl_", 4) == 0) {
-        char path[160];
-        snprintf(path, sizeof(path), "/articles/%s", f.c_str());
-        Storage.remove(path);
-        LOG_DBG("BOOT", "Removed stale temp file: %s", path);
-      }
-    }
-  }
-
   HalSystem::checkPanic();
   HalSystem::clearPanic();  // TODO: move this to an activity when we have one to display the panic info
 

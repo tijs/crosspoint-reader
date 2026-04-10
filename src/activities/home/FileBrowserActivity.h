@@ -1,8 +1,9 @@
 #pragma once
 
+#include <algorithm>
 #include <functional>
 #include <string>
-#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "../Activity.h"
@@ -23,7 +24,8 @@ class FileBrowserActivity final : public Activity {
   std::vector<std::string> files;
 
   // Article title metadata (filename -> title), loaded when browsing /articles/
-  std::unordered_map<std::string, std::string> articleTitles;
+  // Sorted vector for O(log n) lookup with less heap fragmentation than unordered_map
+  std::vector<std::pair<std::string, std::string>> articleTitles;
 
   // Data loading
   void loadFiles();

@@ -2,5 +2,5 @@
 
 #include <cstddef>
 
-static constexpr const char* ARTICLES_PATH = "/articles/";
-static constexpr size_t ARTICLES_PATH_LEN = 10;
+inline constexpr const char* ARTICLES_PATH = "/articles/";
+inline constexpr size_t ARTICLES_PATH_LEN = sizeof("/articles/") - 1;
