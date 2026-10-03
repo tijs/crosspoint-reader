@@ -15,6 +15,7 @@
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
+#include "OpdsServerStore.h"
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -24,7 +25,7 @@ int HomeActivity::getMenuItemCount() const {
   if (!recentBooks.empty()) {
     count += recentBooks.size();
   }
-  if (hasOpdsUrl) {
+  if (hasOpdsServers) {
     count++;
   }
   return count;
@@ -37,7 +38,7 @@ void HomeActivity::loadRecentBooks(int maxCount) {
 
   for (const RecentBook& book : books) {
     if (static_cast<int>(recentBooks.size()) >= maxCount) break;
-    if (!Storage.exists(book.path.c_str())) continue;
+    if (RecentBooksStore::isMissing(book)) continue;
     recentBooks.push_back(book);
   }
 }
@@ -102,8 +103,7 @@ void HomeActivity::loadRecentCovers(int coverHeight) {
 void HomeActivity::onEnter() {
   Activity::onEnter();
 
-  // Check if OPDS browser URL is configured
-  hasOpdsUrl = strlen(SETTINGS.opdsServerUrl) > 0;
+  hasOpdsServers = OPDS_STORE.hasServers();
 
   selectorIndex = 0;
 
@@ -188,7 +188,7 @@ void HomeActivity::loop() {
     int m = 0;
     const int fileBrowserIdx = m++;
     const int recentsIdx = m++;
-    const int opdsLibraryIdx = hasOpdsUrl ? m++ : -1;
+    const int opdsLibraryIdx = hasOpdsServers ? m++ : -1;
     const int fileTransferIdx = m++;
     const int settingsIdx = m;
 
@@ -242,7 +242,7 @@ void HomeActivity::render(RenderLock&&) {
   };
   addMenuItem(tr(STR_BROWSE_FILES), Folder);
   addMenuItem(tr(STR_MENU_RECENT_BOOKS), Recent);
-  if (hasOpdsUrl) addMenuItem(tr(STR_OPDS_BROWSER), Library);
+  if (hasOpdsServers) addMenuItem(tr(STR_OPDS_BROWSER), Library);
   addMenuItem(tr(STR_FILE_TRANSFER), Transfer);
   addMenuItem(tr(STR_SETTINGS_TITLE), Settings);
 
